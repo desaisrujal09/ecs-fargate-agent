@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'Terraform/**'
+      - '../Terraform/*'
   workflow_dispatch: #
 
 jobs:
