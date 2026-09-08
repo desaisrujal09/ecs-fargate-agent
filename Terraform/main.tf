@@ -119,3 +119,104 @@ resource "aws_ecs_service" "service" {
     ignore_changes = [task_definition]
   }
 }
+
+resource "aws_iam_role" "lambda_sre_role" {
+  name = "autosre_lambda_execution_role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "lambda.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_basic" {
+  role       = aws_iam_role.lambda_sre_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_policy" "autosre_custom_policy" {
+  name = "autosre_custom_policy"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "bedrock:InvokeModel"
+        ]
+        Resource = "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-haiku-20240307-v1:0"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:FilterLogEvents",
+          "logs:DescribeLogGroups"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_autosre_attach" {
+  role       = aws_iam_role.lambda_sre_role.name
+  policy_arn = aws_iam_policy.autosre_custom_policy.arn
+}
+
+data "archive_file" "lambda_zip" {
+  type        = "zip"
+  source_file = "${path.module}/lambda_function.py"
+  output_path = "${path.module}/lambda_function.zip"
+}
+
+resource "aws_lambda_function" "autosre_agent" {
+  filename         = data.archive_file.lambda_zip.output_path
+  function_name    = "auto-sre-remediation-agent"
+  role             = aws_iam_role.lambda_sre_role.arn
+  handler          = "lambda_function.lambda_handler"
+  runtime          = "python3.11"
+  source_code_hash = data.archive_file.lambda_zip.output_base64sha256
+  timeout          = 30
+
+  environment {
+    variables = {
+      ENVIRONMENT = "production"
+    }
+  }
+}
+
+resource "aws_cloudwatch_event_rule" "ecs_task_failure_rule" {
+  name        = "ecs-task-failure-sre-trigger"
+  description = "Triggers AutoSRE Lambda agent when ECS tasks fail or crash"
+
+  event_pattern = jsonencode({
+    source      = ["aws.ecs"]
+    detail-type = ["ECS Task State Change"]
+    detail = {
+      lastStatus = ["STOPPED"]
+      stopCode   = ["EssentialContainerExited", "OutMemory"]
+    }
+  })
+}
+
+resource "aws_cloudwatch_event_target" "invoke_sre_lambda" {
+  rule      = aws_cloudwatch_event_rule.ecs_task_failure_rule.name
+  target_id = "AutoSRELambdaTarget"
+  arn       = aws_lambda_function.autosre_agent.arn
+}
+
+resource "aws_lambda_permission" "allow_eventbridge" {
+  statement_id  = "AllowExecutionFromEventBridge"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.autosre_agent.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.ecs_task_failure_rule.arn
+}
