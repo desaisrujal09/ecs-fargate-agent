@@ -31,7 +31,7 @@ data "aws_subnet" "public_subnet" {
 data "aws_security_group" "mysg" {
   vpc_id = data.aws_vpc.myvpc.id
   filter {
-    name   = "Name"
+    name   = "tag:Name"
     values = ["mysg"] 
   }
 }
