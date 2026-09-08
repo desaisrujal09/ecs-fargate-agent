@@ -6,6 +6,7 @@ on:
     paths:
       - 'app.py'
       - 'Dockerfile'
+    workflow_dispatch: #
 
 jobs:
   app-deploy:
