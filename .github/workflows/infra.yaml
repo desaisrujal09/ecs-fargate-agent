@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main ]
     paths:
-      - '../Terraform/*'
+      - 'Terraform/*'
   workflow_dispatch: #
 
 jobs:
@@ -26,6 +26,7 @@ jobs:
 
       - name: Terraform Init and Apply
         run: |
-          cd terraform
+          cd Terraform
           terraform init
+          terraform plan
           terraform apply -auto-approve
