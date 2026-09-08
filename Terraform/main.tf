@@ -173,7 +173,7 @@ resource "aws_iam_role_policy_attachment" "lambda_autosre_attach" {
 
 data "archive_file" "lambda_zip" {
   type        = "zip"
-  source_file = "${path.module}/Terraform/lambda_function.py"
+  source_file = "${path.module}/lambda_function.py"
   output_path = "${path.module}/lambda_function.zip"
 }
 
