@@ -32,4 +32,5 @@ jobs:
         if: github.event.inputs.confirm == 'destroy'
         run: |
           cd Terraform
+          terraform init 
           terraform destroy --auto-approve
