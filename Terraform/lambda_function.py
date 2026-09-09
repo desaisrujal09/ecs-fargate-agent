@@ -6,6 +6,43 @@ import ast
 import urllib.request
 import boto3
 
+def parse_slack_body(body_str):
+    """Safely parses incoming JSON or single-quoted dictionaries from API Gateway."""
+    if not body_str:
+        return {}
+    if isinstance(body_str, dict):
+        return body_str
+        
+    # 1. Try standard JSON loading
+    try:
+        parsed = json.loads(body_str)
+        if isinstance(parsed, str):
+            parsed = json.loads(parsed) # Handle double-encoding
+        return parsed
+    except Exception:
+        pass
+        
+    # 2. Try replacing single quotes with double quotes to make it valid JSON
+    try:
+        fixed_str = body_str.replace("'", '"')
+        parsed = json.loads(fixed_str)
+        if isinstance(parsed, str):
+            parsed = json.loads(parsed)
+        return parsed
+    except Exception:
+        pass
+        
+    # 3. Fallback to ast.literal_eval only if it results in a dictionary
+    try:
+        res = ast.literal_eval(body_str)
+        if isinstance(res, dict):
+            return res
+    except Exception:
+        pass
+        
+    raise ValueError(f"Unable to parse request body: {body_str}")
+
+
 def lambda_handler(event, context):
     print("Event received: ", json.dumps(event))
     
@@ -22,18 +59,8 @@ def lambda_handler(event, context):
             if event.get("isBase64Encoded", False):
                 body_str = base64.b64decode(body_str).decode('utf-8')
                 
-            # Parse JSON with fallback for single quotes or formatting edge cases
-            try:
-                body = json.loads(body_str)
-            except json.JSONDecodeError:
-                body = ast.literal_eval(body_str)
-            
-            # Ensure body is a dictionary if it was double-encoded as a string
-            if isinstance(body, str):
-                try:
-                    body = json.loads(body)
-                except Exception:
-                    body = ast.literal_eval(body)
+            # Parse body using our robust helper
+            body = parse_slack_body(body_str)
             
             # Handle Slack's initial URL verification challenge
             if "challenge" in body:
