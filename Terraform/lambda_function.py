@@ -11,7 +11,8 @@ def lambda_handler(event, context):
     
     log_snippet = "No log streams found."
     
-    # Poll for the active log stream (retry up to 3 times, waiting 2 seconds each)
+    # 1. Active Log Stream Polling Mechanism
+    # Loops up to 3 times, waiting 2 seconds per iteration to bypass the Fargate-to-CloudWatch log flush lag.
     stream_name = None
     for attempt in range(3):
         try:
@@ -31,7 +32,8 @@ def lambda_handler(event, context):
         
         time.sleep(2)
 
-    # Fetch log events if a stream was found
+    # 2. Fetch Log Events
+    # Pulls the last 15 raw events from the identified container stream for analysis.
     if stream_name:
         try:
             log_events = logs_client.get_log_events(
@@ -47,7 +49,8 @@ def lambda_handler(event, context):
 
     print(f"Extracted Log Snippet for AI: {log_snippet}")
 
-    # Invoke Amazon Nova Lite for root-cause and sizing recommendation
+    # 3. Amazon Nova Lite Model Invocation
+    # Feeds the runtime log snippet into Amazon Bedrock (Nova Lite) to generate structural failure diagnostics.
     bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
     
     prompt = f"""
@@ -76,7 +79,7 @@ def lambda_handler(event, context):
         }
     }
     
-    ai_analysis = "Bedrock invocation failed."
+    ai_analysis = "Analysis unavailable."
     try:
         bedrock_response = bedrock.invoke_model(
             modelId="amazon.nova-lite-v1:0",
@@ -87,20 +90,30 @@ def lambda_handler(event, context):
         print(f"Nova Lite Diagnosis: {ai_analysis}")
         
     except Exception as ex:
-        print(f"Bedrock invocation failed: {str(ex)}")
+        ai_analysis = f"Bedrock invocation failed: {str(ex)}"
 
-    # Publish diagnostic report to SNS (which forwards it to Slack via AWS Chatbot)
+    # 4. AWS Chatbot Custom Notification Schema Formatting
+    # Wraps the analysis into the official JSON structure required by AWS Chatbot/Amazon Q 
+    # to prevent unsupported event schema rejections in CloudWatch.
     sns_topic_arn = os.environ.get("SNS_TOPIC_ARN")
     if sns_topic_arn:
         try:
             sns_client = boto3.client('sns')
-            message = f"🚨 *AutoSRE Agent: Fargate Task Failure*\n\n```json\n{ai_analysis}\n```"
+            
+            custom_notification = {
+                "version": "1.0",
+                "source": "custom.autosre",
+                "content": {
+                    "text": f"🚨 *AutoSRE Agent: Fargate Task Failure*\n\n{ai_analysis}\n\n_Tip: Type `@aws` or `@Amazon Q` in this channel to ask follow-up questions about this crash!_"
+                }
+            }
+            
             sns_client.publish(
                 TopicArn=sns_topic_arn,
-                Message=message,
+                Message=json.dumps(custom_notification),
                 Subject="AutoSRE Diagnostic Report"
             )
-            print("Successfully published analysis to SNS topic.")
+            print("Successfully published custom notification to SNS topic.")
         except Exception as sns_ex:
             print(f"Failed to publish to SNS: {str(sns_ex)}")
     else:
