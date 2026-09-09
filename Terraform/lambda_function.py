@@ -2,6 +2,7 @@ import json
 import os
 import time
 import base64
+import ast
 import urllib.request
 import boto3
 
@@ -21,7 +22,11 @@ def lambda_handler(event, context):
             if event.get("isBase64Encoded", False):
                 body_str = base64.b64decode(body_str).decode('utf-8')
                 
-            body = json.loads(body_str)
+            # Parse JSON with fallback for single quotes or formatting edge cases
+            try:
+                body = json.loads(body_str)
+            except json.JSONDecodeError:
+                body = ast.literal_eval(body_str)
             
             # Handle Slack's initial URL verification challenge
             if "challenge" in body:
