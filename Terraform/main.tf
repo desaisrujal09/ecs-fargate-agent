@@ -175,8 +175,7 @@ resource "aws_iam_policy" "autosre_custom_policy" {
         Action = [
           "sns:Publish"
         ]
-        Resource = aws_sns_topic.autosre_alerts.arn
-      }
+        Resource = "arn:aws:sns:us-east-1:162898224956:autosre-alert-bot"
     ]
   })
 }
