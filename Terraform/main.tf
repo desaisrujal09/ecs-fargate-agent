@@ -176,6 +176,7 @@ resource "aws_iam_policy" "autosre_custom_policy" {
           "sns:Publish"
         ]
         Resource = "arn:aws:sns:us-east-1:162898224956:autosre-alert-bot"
+      }
     ]
   })
 }
