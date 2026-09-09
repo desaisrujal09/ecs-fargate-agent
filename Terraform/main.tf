@@ -158,7 +158,7 @@ resource "aws_iam_policy" "autosre_custom_policy" {
         Action = [
           "bedrock:InvokeModel"
         ]
-        Resource = "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-haiku-20240307-v1:0"
+        Resource = "arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-lite-v1:0"
       },
       {
         Effect = "Allow"
