@@ -1,16 +1,27 @@
 import json
 import os
 import time
-import boto3
+import base64
 import urllib.request
+import boto3
 
 def lambda_handler(event, context):
     print("Event received: ", json.dumps(event))
     
+    # Safely extract and check the body to prevent NoneType errors
+    body_str = event.get("body")
+    if not body_str:
+        # Fallback for direct invocations or empty payloads that aren't Slack webhooks
+        return handle_ecs_failure(event, context)
+    
     # 1. Check if this is an incoming event from Slack via API Gateway
-    if "body" in event and event.get("requestContext"):
+    if "requestContext" in event:
         try:
-            body = json.loads(event["body"])
+            # Handle base64 encoded bodies if API Gateway encodes them
+            if event.get("isBase64Encoded", False):
+                body_str = base64.b64decode(body_str).decode('utf-8')
+                
+            body = json.loads(body_str)
             
             # Handle Slack's initial URL verification challenge
             if "challenge" in body:
@@ -31,6 +42,7 @@ def lambda_handler(event, context):
                 
         except Exception as e:
             print(f"Error parsing API Gateway / Slack event: {str(e)}")
+            return {'statusCode': 400, 'body': json.dumps(f"Parsing error: {str(e)}")}
 
     # 2. Otherwise, fallback to handling the default ECS Fargate task failure alert flow
     return handle_ecs_failure(event, context)
