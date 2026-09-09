@@ -40,7 +40,7 @@ def lambda_handler(event, context):
     
     try:
         bedrock_response = bedrock.invoke_model(
-            modelId="anthropic.claude-3-haiku-20240307-v1:0",
+            modelId="amazon.nova-lite-v1:0",
             body=json.dumps(body)
         )
         result = json.loads(bedrock_response['body'].read())
