@@ -25,6 +25,7 @@ jobs:
         uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init and Apply
+          TF_VAR_slack_bot_token: ${{ secrets.SLACK_BOT_TOKEN }}
         run: |
           cd Terraform
           terraform init

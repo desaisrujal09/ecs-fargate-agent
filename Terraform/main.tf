@@ -205,6 +205,7 @@ resource "aws_lambda_function" "autosre_agent" {
     variables = {
       ENVIRONMENT = "production"
       SNS_TOPIC_ARN = "arn:aws:sns:us-east-1:162898224956:autosre-alert-bot"
+      SLACK_BOT_TOKEN = var.slack_bot_token
     }
   }
 }
