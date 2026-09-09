@@ -169,6 +169,13 @@ resource "aws_iam_policy" "autosre_custom_policy" {
           "logs:GetLogEvents"
         ]
         Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "sns:Publish"
+        ]
+        Resource = aws_sns_topic.autosre_alerts.arn
       }
     ]
   })
@@ -197,6 +204,7 @@ resource "aws_lambda_function" "autosre_agent" {
   environment {
     variables = {
       ENVIRONMENT = "production"
+      SNS_TOPIC_ARN = "arn:aws:sns:us-east-1:162898224956:autosre-alert-bot"
     }
   }
 }
