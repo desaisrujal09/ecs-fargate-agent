@@ -42,12 +42,9 @@ flowchart TD
 
 * **Observability & Alerting:**
 * **Amazon CloudWatch Logs:** Source log group (`/ecs/fargate-test-app`) containing container execution streams.
-* **Amazon SNS:** Notification pipeline for broadcasting automated crash alerts.
-
 
 * **Generative AI Engine:**
 * **Amazon Bedrock (`amazon.nova-lite-v1:0` - Nova Lite):** Processes log contexts, evaluates user intent, and generates structured responses.
-
 
 * **Chat Interface:**
 * **Slack Events API (`app_mention`):** Captures workspace user interactions.
