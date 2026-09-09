@@ -28,6 +28,13 @@ def lambda_handler(event, context):
             except json.JSONDecodeError:
                 body = ast.literal_eval(body_str)
             
+            # Ensure body is a dictionary if it was double-encoded as a string
+            if isinstance(body, str):
+                try:
+                    body = json.loads(body)
+                except Exception:
+                    body = ast.literal_eval(body)
+            
             # Handle Slack's initial URL verification challenge
             if "challenge" in body:
                 return {
