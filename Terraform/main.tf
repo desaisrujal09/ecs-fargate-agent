@@ -164,7 +164,9 @@ resource "aws_iam_policy" "autosre_custom_policy" {
         Effect = "Allow"
         Action = [
           "logs:FilterLogEvents",
-          "logs:DescribeLogGroups"
+          "logs:DescribeLogGroups",
+          "logs:DescribeLogStreams",
+          "logs:GetLogEvents"
         ]
         Resource = "*"
       }
