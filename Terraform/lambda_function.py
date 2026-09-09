@@ -5,13 +5,12 @@ import boto3
 def lambda_handler(event, context):
     print("AutoSRE Agent triggered with event: ", json.dumps(event))
     
-    # 1. Query CloudWatch Logs for recent container output (broader range)
+    # 1. Query CloudWatch Logs for recent container output
     logs_client = boto3.client('logs')
     log_group_name = "/aws/ecs/fargate-test-app"
     
     log_snippet = "No logs available."
     try:
-        # Instead of a strict filter pattern, grab the most recent log stream events directly
         streams_response = logs_client.describe_log_streams(
             logGroupName=log_group_name,
             orderBy='LastEventTime',
@@ -26,7 +25,7 @@ def lambda_handler(event, context):
                 logStreamName=stream_name,
                 limit=10,
                 startFromHead=False
-            }
+            )
             events = log_events.get('events', [])
             log_snippet = "\n".join([e['message'] for e in events]) if events else "Stream was empty."
     except Exception as e:
