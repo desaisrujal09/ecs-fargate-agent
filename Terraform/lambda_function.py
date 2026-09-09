@@ -7,8 +7,8 @@ def lambda_handler(event, context):
     print("AutoSRE Agent triggered with event: ", json.dumps(event))
     
     # Give CloudWatch Logs a brief moment to ingest buffered container logs from Fargate
-    print("Waiting 3 seconds for CloudWatch log flush...")
-    time.sleep(30)
+    print("Waiting 60 seconds for CloudWatch log flush...")
+    time.sleep(60)
     
     # 1. Query CloudWatch Logs for recent container output
     logs_client = boto3.client('logs')
