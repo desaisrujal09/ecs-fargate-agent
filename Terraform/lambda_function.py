@@ -5,49 +5,63 @@ import boto3
 def lambda_handler(event, context):
     print("AutoSRE Agent triggered with event: ", json.dumps(event))
     
-    # Query CloudWatch Logs for container OOM or critical exits
+    # 1. Query CloudWatch Logs for recent container output (broader range)
     logs_client = boto3.client('logs')
     log_group_name = "/aws/ecs/fargate-test-app"
     
-    log_snippet = "No errors parsed yet."
+    log_snippet = "No logs available."
     try:
-        response = logs_client.filter_log_events(
+        # Instead of a strict filter pattern, grab the most recent log stream events directly
+        streams_response = logs_client.describe_log_streams(
             logGroupName=log_group_name,
-            filterPattern="CRITICAL",
-            limit=5
+            orderBy='LastEventTime',
+            descending=True,
+            limit=1
         )
-        events = response.get('events', [])
-        log_snippet = "\n".join([e['message'] for e in events]) if events else "No explicit critical logs found."
+        streams = streams_response.get('logStreams', [])
+        if streams:
+            stream_name = streams[0]['logStreamName']
+            log_events = logs_client.get_log_events(
+                logGroupName=log_group_name,
+                logStreamName=stream_name,
+                limit=10,
+                startFromHead=False
+            }
+            events = log_events.get('events', [])
+            log_snippet = "\n".join([e['message'] for e in events]) if events else "Stream was empty."
     except Exception as e:
         log_snippet = f"Could not fetch logs: {str(e)}"
 
-    # Invoke Amazon Bedrock (Claude 3 Haiku) for root-cause and sizing recommendation
+    print(f"Extracted Log Snippet for AI: {log_snippet}")
+
+    # 2. Invoke Amazon Nova Lite for root-cause and sizing recommendation
     bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
+    
     prompt = f"""
     You are an expert Autonomous SRE Agent. 
     An ECS task encountered a failure. Recent container logs:
     {log_snippet}
     
-    Analyze the failure. Is this a Memory (OOM) or CPU bottleneck? 
+    Analyze the failure. Is this a Memory (OOM) or CPU bottleneck, or a code exception? 
     Provide a brief JSON analysis with keys: 'root_cause', 'recommended_cpu', and 'recommended_memory'.
     """
     
     body = {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "text": prompt
-                        }
-                    ]
-                }
-            ],
-            "inferenceConfig": {
-                "maxTokens": 300,
-                "temperature": 0.0
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "text": prompt
+                    }
+                ]
             }
+        ],
+        "inferenceConfig": {
+            "maxTokens": 300,
+            "temperature": 0.0
         }
+    }
     
     try:
         bedrock_response = bedrock.invoke_model(
@@ -55,12 +69,13 @@ def lambda_handler(event, context):
             body=json.dumps(body)
         )
         result = json.loads(bedrock_response['body'].read())
-        ai_analysis = result['content'][0]['text']
-        print(f"Bedrock Diagnosis: {ai_analysis}")
+        ai_analysis = result['output']['message']['content'][0]['text']
+        print(f"Nova Lite Diagnosis: {ai_analysis}")
+        
     except Exception as ex:
-        print(f"Bedrock invocation skipped or failed: {str(ex)}")
+        print(f"Bedrock invocation failed: {str(ex)}")
 
     return {
         'statusCode': 200,
-        'body': json.dumps('Auto-remediation analysis complete.')
+        'body': json.dumps('Auto-remediation analysis complete with Nova Lite.')
     }
