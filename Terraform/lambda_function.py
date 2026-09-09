@@ -7,7 +7,7 @@ import urllib.request
 import boto3
 
 def parse_slack_body(body_str):
-    """Safely parses incoming JSON or single-quoted dictionaries from API Gateway."""
+    """Safely parses incoming JSON and strictly guarantees a dictionary is returned."""
     if not body_str:
         return {}
     if isinstance(body_str, dict):
@@ -18,21 +18,23 @@ def parse_slack_body(body_str):
         parsed = json.loads(body_str)
         if isinstance(parsed, str):
             parsed = json.loads(parsed) # Handle double-encoding
-        return parsed
+        if isinstance(parsed, dict):
+            return parsed
     except Exception:
         pass
         
-    # 2. Try replacing single quotes with double quotes to make it valid JSON
+    # 2. Try replacing single quotes with double quotes
     try:
         fixed_str = body_str.replace("'", '"')
         parsed = json.loads(fixed_str)
         if isinstance(parsed, str):
             parsed = json.loads(parsed)
-        return parsed
+        if isinstance(parsed, dict):
+            return parsed
     except Exception:
         pass
         
-    # 3. Fallback to ast.literal_eval only if it results in a dictionary
+    # 3. Fallback to ast.literal_eval
     try:
         res = ast.literal_eval(body_str)
         if isinstance(res, dict):
@@ -40,7 +42,7 @@ def parse_slack_body(body_str):
     except Exception:
         pass
         
-    raise ValueError(f"Unable to parse request body: {body_str}")
+    raise ValueError(f"Body could not be parsed into a dictionary: {body_str}")
 
 
 def lambda_handler(event, context):
@@ -59,7 +61,7 @@ def lambda_handler(event, context):
             if event.get("isBase64Encoded", False):
                 body_str = base64.b64decode(body_str).decode('utf-8')
                 
-            # Parse body using our robust helper
+            # Parse body using our dictionary-guaranteed helper
             body = parse_slack_body(body_str)
             
             # Handle Slack's initial URL verification challenge
