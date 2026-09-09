@@ -30,4 +30,6 @@ jobs:
 
       - name: Terraform Destroy
         if: github.event.inputs.confirm == 'destroy'
-        run: terraform destroy --auto-approve
+        run: |
+          cd Terraform
+          terraform destroy --auto-approve

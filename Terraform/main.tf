@@ -1,8 +1,14 @@
 terraform {
   required_providers {
     aws = {
-      source  = "hashicorp/aws"
-    }
+      source  = "hashicorp/aws"    }
+  }
+
+  # Remote S3 Backend Configuration for Persistent State
+  backend "s3" {
+    bucket = "sre-agent-terraform"
+    key    = "fargate-lab/terraform.tfstate"
+    region = "us-east-1"
   }
 }
 
