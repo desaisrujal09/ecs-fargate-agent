@@ -129,17 +129,18 @@ def handle_ecs_failure(event, context):
 
     bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
     prompt = f"""
-    You are an expert Autonomous SRE Agent. 
-    An ECS task encountered a failure. Recent container logs:
+    You are an expert SRE assistant. 
+    Recent container logs:
     {log_snippet}
     
-    Analyze the failure. Is this a Memory (OOM), CPU bottleneck, or code exception? 
-    Provide a concise summary and recommended next steps.
+    The engineer asks: "{user_query}"
+    
+    Provide a short, direct response (max 3 bullet points). Do not list generic troubleshooting steps like "check network" unless the logs show it. Get straight to the point.
     """
     
     body = {
         "messages": [{"role": "user", "content": [{"text": prompt}]}],
-        "inferenceConfig": {"maxTokens": 300, "temperature": 0.0}
+        "inferenceConfig": {"maxTokens": 150, "temperature": 0.1}
     }
     
     ai_analysis = "Analysis unavailable."
@@ -160,7 +161,7 @@ def handle_ecs_failure(event, context):
                 "source": "custom",
                 "content": {
                     "textType": "client-markdown",
-                    "description": f"🚨 *AutoSRE Agent: Fargate Task Failure*\n\n{ai_analysis}\n\n_Tip: Tag me in this channel to ask follow-up questions!_"
+                    "description": f"🚨 *SRE Agent: Fargate Task Failure*\n\n{ai_analysis}\n\n_Tip: Tag me in this channel to ask follow-up questions!_"
                 }
             }
             sns_client.publish(TopicArn=sns_topic_arn, Message=json.dumps(custom_notification))
