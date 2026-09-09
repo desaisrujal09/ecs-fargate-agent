@@ -119,16 +119,15 @@ def handle_ecs_failure(event, context):
 
     bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
     prompt = f"""
-    You are an expert Autonomous SRE Agent. 
-    An ECS task encountered a failure. Recent container logs:
+    You are a senior SRE teammate. An ECS task failed. Recent container logs:
     {log_snippet}
     
-    Analyze the failure concisely. Max 3 bullet points. Get straight to the point.
+    Give a short, human-like breakdown of what went wrong and how to prevent it from happening again.
     """
     
     body = {
         "messages": [{"role": "user", "content": [{"text": prompt}]}],
-        "inferenceConfig": {"maxTokens": 150, "temperature": 0.0}
+        "inferenceConfig": {"maxTokens": 200, "temperature": 0.2}
     }
     
     ai_analysis = "Analysis unavailable."
@@ -159,7 +158,7 @@ def handle_ecs_failure(event, context):
 
 
 def handle_interactive_chat(slack_event):
-    """Fetches fresh logs on-demand, queries Bedrock concisely, and replies to Slack."""
+    """Fetches fresh logs on-demand, queries Bedrock like a human SRE engineer, and replies to Slack."""
     channel_id = slack_event.get("channel")
     user_query = slack_event.get("text", "")
     
@@ -183,30 +182,34 @@ def handle_interactive_chat(slack_event):
     except Exception as e:
         print(f"Could not fetch logs for chat context: {str(e)}")
 
-    # Concise prompt with strict token limits to prevent text walls
+    # Human-like SRE persona prompt focusing on root cause and future prevention
     bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
     prompt = f"""
-    You are a concise SRE Chatbot assistant. 
-    Recent container logs:
+    You are a helpful, senior SRE engineer talking directly to a teammate in Slack. 
+    Here are the recent container logs from the app:
     {log_snippet}
     
-    User query: "{user_query}"
+    The engineer asks: "{user_query}"
     
-    Provide a short, direct response (maximum 3 bullet points). Do not give generic advice or textbook troubleshooting steps unless explicitly shown in the logs. Get straight to the point.
+    Respond like a human expert:
+    1. Talk conversationally. Explain what you see happening in the logs in plain English.
+    2. Identify the root cause if there's an error.
+    3. Clearly outline preventative steps or code/config changes to ensure this error doesn't happen again in the future.
+    Keep it concise, clear, and avoid robotic formatting or walls of generic text.
     """
     
     body = {
         "messages": [{"role": "user", "content": [{"text": prompt}]}],
-        "inferenceConfig": {"maxTokens": 150, "temperature": 0.1}
+        "inferenceConfig": {"maxTokens": 250, "temperature": 0.3}
     }
     
-    reply_text = "I'm having trouble analyzing the logs right now."
+    reply_text = "Hey, I'm having trouble pulling the logs right now. Give me just a second to check again."
     try:
         bedrock_response = bedrock.invoke_model(modelId="amazon.nova-lite-v1:0", body=json.dumps(body))
         result = json.loads(bedrock_response['body'].read())
         reply_text = result['output']['message']['content'][0]['text']
     except Exception as ex:
-        reply_text = f"Error generating AI response: {str(ex)}"
+        reply_text = f"Ah, ran into a snag getting the AI analysis: {str(ex)}"
 
     slack_token = os.environ.get("SLACK_BOT_TOKEN")
     if slack_token:
