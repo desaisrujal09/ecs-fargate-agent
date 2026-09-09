@@ -76,6 +76,7 @@ def lambda_handler(event, context):
         }
     }
     
+    ai_analysis = "Bedrock invocation failed."
     try:
         bedrock_response = bedrock.invoke_model(
             modelId="amazon.nova-lite-v1:0",
@@ -88,7 +89,24 @@ def lambda_handler(event, context):
     except Exception as ex:
         print(f"Bedrock invocation failed: {str(ex)}")
 
+    # Publish diagnostic report to SNS (which forwards it to Slack via AWS Chatbot)
+    sns_topic_arn = os.environ.get("SNS_TOPIC_ARN")
+    if sns_topic_arn:
+        try:
+            sns_client = boto3.client('sns')
+            message = f"🚨 *AutoSRE Agent: Fargate Task Failure*\n\n```json\n{ai_analysis}\n```"
+            sns_client.publish(
+                TopicArn=sns_topic_arn,
+                Message=message,
+                Subject="AutoSRE Diagnostic Report"
+            )
+            print("Successfully published analysis to SNS topic.")
+        except Exception as sns_ex:
+            print(f"Failed to publish to SNS: {str(sns_ex)}")
+    else:
+        print("SNS_TOPIC_ARN environment variable not set, skipping notification.")
+
     return {
         'statusCode': 200,
-        'body': json.dumps('Auto-remediation analysis complete with Nova Lite.')
+        'body': json.dumps('Auto-remediation analysis complete with Nova Lite and Chatbot notification.')
     }
