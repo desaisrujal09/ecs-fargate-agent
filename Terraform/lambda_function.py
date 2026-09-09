@@ -1,11 +1,16 @@
 import json
 import os
+import time
 import boto3
 
 def lambda_handler(event, context):
     print("AutoSRE Agent triggered with event: ", json.dumps(event))
     
-    # 1. Query CloudWatch Logs using FilterLogEvents (handles missing streams gracefully)
+    # Give CloudWatch Logs a brief moment to ingest buffered container logs from Fargate
+    print("Waiting 3 seconds for CloudWatch log flush...")
+    time.sleep(30)
+    
+    # 1. Query CloudWatch Logs for recent container output
     logs_client = boto3.client('logs')
     log_group_name = "/ecs/fargate-test-app"
     
@@ -19,7 +24,7 @@ def lambda_handler(event, context):
         events = response.get('events', [])
         log_snippet = "\n".join([e['message'] for e in events]) if events else "Log group is empty."
     except Exception as e:
-        log_snippet = f"Could not fetch logs (group may not exist yet): {str(e)}"
+        log_snippet = f"Could not fetch logs: {str(e)}"
 
     print(f"Extracted Log Snippet for AI: {log_snippet}")
 
