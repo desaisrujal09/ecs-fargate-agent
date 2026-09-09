@@ -236,3 +236,43 @@ resource "aws_lambda_permission" "allow_eventbridge" {
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.ecs_task_failure_rule.arn
 }
+
+
+resource "aws_apigatewayv2_api" "slack_api" {
+  name          = "autosre-chat-api"
+  protocol_type = "HTTP"
+}
+
+resource "aws_apigatewayv2_stage" "default" {
+  api_id      = aws_apigatewayv2_api.slack_api.id
+  name        = "$default"
+  auto_deploy = true
+}
+
+resource "aws_apigatewayv2_integration" "lambda_integration" {
+  api_id             = aws_apigatewayv2_api.slack_api.id
+  integration_type   = "AWS_PROXY"
+  integration_method = "POST"
+  integration_uri    = aws_lambda_function.autosre_agent.invoke_arn
+}
+
+resource "aws_apigatewayv2_route" "slack_route" {
+  api_id    = aws_apigatewayv2_api.slack_api.id
+  route_key = "POST /slack/events"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
+}
+
+# Grant API Gateway permission to invoke your Lambda function
+resource "aws_lambda_permission" "api_gateway" {
+  statement_id  = "AllowExecutionFromAPIGateway"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.autosre_agent.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.slack_api.execution_arn}/*/*"
+}
+
+# Output the final Webhook URL to paste into Slack
+output "slack_webhook_url" {
+  description = "Copy this URL into your Slack App Event Subscriptions Request URL field"
+  value       = "${aws_apigatewayv2_stage.default.invoke_url}/slack/events"
+}
