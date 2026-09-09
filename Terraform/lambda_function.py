@@ -48,23 +48,17 @@ def parse_slack_body(body_str):
 def lambda_handler(event, context):
     print("Event received: ", json.dumps(event))
     
-    # Safely extract and check the body to prevent NoneType errors
     body_str = event.get("body")
     if not body_str:
-        # Fallback for direct invocations or empty payloads that aren't Slack webhooks
         return handle_ecs_failure(event, context)
     
-    # 1. Check if this is an incoming event from Slack via API Gateway
     if "requestContext" in event:
         try:
-            # Handle base64 encoded bodies if API Gateway encodes them
             if event.get("isBase64Encoded", False):
                 body_str = base64.b64decode(body_str).decode('utf-8')
                 
-            # Parse body using our dictionary-guaranteed helper
             body = parse_slack_body(body_str)
             
-            # Handle Slack's initial URL verification challenge
             if "challenge" in body:
                 return {
                     "statusCode": 200,
@@ -72,10 +66,8 @@ def lambda_handler(event, context):
                     "body": json.dumps({"challenge": body["challenge"]})
                 }
             
-            # Handle actual Slack user mentions/messages
             slack_event = body.get("event", {})
             if slack_event.get("type") == "app_mention" or slack_event.get("type") == "message":
-                # Prevent infinite loops from the bot talking to itself
                 if slack_event.get("bot_id") or slack_event.get("subtype") == "bot_message":
                     return {'statusCode': 200, 'body': 'Ignored bot message'}
                 
@@ -85,7 +77,6 @@ def lambda_handler(event, context):
             print(f"Error parsing API Gateway / Slack event: {str(e)}")
             return {'statusCode': 400, 'body': json.dumps(f"Parsing error: {str(e)}")}
 
-    # 2. Otherwise, fallback to handling the default ECS Fargate task failure alert flow
     return handle_ecs_failure(event, context)
 
 
@@ -97,7 +88,6 @@ def handle_ecs_failure(event, context):
     log_snippet = "No log streams found."
     stream_name = None
     
-    # Poll for the active log stream
     for attempt in range(3):
         try:
             streams_response = logs_client.describe_log_streams(
@@ -129,18 +119,16 @@ def handle_ecs_failure(event, context):
 
     bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
     prompt = f"""
-    You are an expert SRE assistant. 
-    Recent container logs:
+    You are an expert Autonomous SRE Agent. 
+    An ECS task encountered a failure. Recent container logs:
     {log_snippet}
     
-    The engineer asks: "{user_query}"
-    
-    Provide a short, direct response (max 3 bullet points). Do not list generic troubleshooting steps like "check network" unless the logs show it. Get straight to the point.
+    Analyze the failure concisely. Max 3 bullet points. Get straight to the point.
     """
     
     body = {
         "messages": [{"role": "user", "content": [{"text": prompt}]}],
-        "inferenceConfig": {"maxTokens": 150, "temperature": 0.1}
+        "inferenceConfig": {"maxTokens": 150, "temperature": 0.0}
     }
     
     ai_analysis = "Analysis unavailable."
@@ -151,7 +139,6 @@ def handle_ecs_failure(event, context):
     except Exception as ex:
         ai_analysis = f"Bedrock error: {str(ex)}"
 
-    # Publish notification payload via SNS using the compliant Chatbot custom notification schema
     sns_topic_arn = os.environ.get("SNS_TOPIC_ARN")
     if sns_topic_arn:
         try:
@@ -161,7 +148,7 @@ def handle_ecs_failure(event, context):
                 "source": "custom",
                 "content": {
                     "textType": "client-markdown",
-                    "description": f"🚨 *SRE Agent: Fargate Task Failure*\n\n{ai_analysis}\n\n_Tip: Tag me in this channel to ask follow-up questions!_"
+                    "description": f"🚨 *AutoSRE Agent: Fargate Task Failure*\n\n{ai_analysis}"
                 }
             }
             sns_client.publish(TopicArn=sns_topic_arn, Message=json.dumps(custom_notification))
@@ -172,13 +159,12 @@ def handle_ecs_failure(event, context):
 
 
 def handle_interactive_chat(slack_event):
-    """Fetches fresh logs on-demand, queries Bedrock, and replies directly to Slack."""
+    """Fetches fresh logs on-demand, queries Bedrock concisely, and replies to Slack."""
     channel_id = slack_event.get("channel")
     user_query = slack_event.get("text", "")
     
     print(f"Interactive query from Slack: {user_query}")
     
-    # Fetch recent logs from CloudWatch on-demand for live context
     logs_client = boto3.client('logs')
     log_group_name = "/ecs/fargate-test-app"
     log_snippet = "No recent logs found."
@@ -197,21 +183,21 @@ def handle_interactive_chat(slack_event):
     except Exception as e:
         print(f"Could not fetch logs for chat context: {str(e)}")
 
-    # Ask Bedrock (Nova Lite) using the user's specific prompt + live logs
+    # Concise prompt with strict token limits to prevent text walls
     bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
     prompt = f"""
-    You are an interactive SRE Chatbot assistant for an AWS lab.
-    Recent container logs from /ecs/fargate-test-app:
+    You are a concise SRE Chatbot assistant. 
+    Recent container logs:
     {log_snippet}
     
-    The engineer asks: "{user_query}"
+    User query: "{user_query}"
     
-    Analyze the logs and the user's question. Provide a helpful, technical, and clear troubleshooting response with actionable next steps.
+    Provide a short, direct response (maximum 3 bullet points). Do not give generic advice or textbook troubleshooting steps unless explicitly shown in the logs. Get straight to the point.
     """
     
     body = {
         "messages": [{"role": "user", "content": [{"text": prompt}]}],
-        "inferenceConfig": {"maxTokens": 400, "temperature": 0.2}
+        "inferenceConfig": {"maxTokens": 150, "temperature": 0.1}
     }
     
     reply_text = "I'm having trouble analyzing the logs right now."
@@ -222,7 +208,6 @@ def handle_interactive_chat(slack_event):
     except Exception as ex:
         reply_text = f"Error generating AI response: {str(ex)}"
 
-    # Post reply back to Slack using Slack's chat.postMessage API
     slack_token = os.environ.get("SLACK_BOT_TOKEN")
     if slack_token:
         slack_url = "https://slack.com/api/chat.postMessage"
