@@ -33,10 +33,21 @@ def lambda_handler(event, context):
     """
     
     body = {
-        "anthropic_version": "bedrock-2023-05-31",
-        "max_tokens": 300,
-        "messages": [{"role": "user", "content": prompt}]
-    }
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "text": prompt
+                        }
+                    ]
+                }
+            ],
+            "inferenceConfig": {
+                "maxTokens": 300,
+                "temperature": 0.0
+            }
+        }
     
     try:
         bedrock_response = bedrock.invoke_model(
