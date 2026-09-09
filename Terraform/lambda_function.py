@@ -48,6 +48,14 @@ def parse_slack_body(body_str):
 def lambda_handler(event, context):
     print("Event received: ", json.dumps(event))
     
+    # Check for Slack retry headers and drop them to prevent duplicate spamming
+    headers = event.get("headers") or {}
+    # Case-insensitive header check for Slack retry
+    retry_header_keys = [k for k in headers.keys() if k.lower() == "x-slack-retry-num"]
+    if retry_header_keys:
+        print(f"Ignored Slack retry event (Header found: {retry_header_keys[0]})")
+        return {'statusCode': 200, 'body': json.dumps('Ignored retry')}
+
     body_str = event.get("body")
     if not body_str:
         return handle_ecs_failure(event, context)
@@ -182,7 +190,6 @@ def handle_interactive_chat(slack_event):
     except Exception as e:
         print(f"Could not fetch logs for chat context: {str(e)}")
 
-    # Human-like SRE persona prompt focusing on root cause and future prevention
     bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
     prompt = f"""
     You are a helpful, senior SRE engineer talking directly to a teammate in Slack. 
