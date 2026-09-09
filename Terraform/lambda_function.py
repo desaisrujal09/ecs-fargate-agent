@@ -6,29 +6,48 @@ import boto3
 def lambda_handler(event, context):
     print("AutoSRE Agent triggered with event: ", json.dumps(event))
     
-    # Give CloudWatch Logs a brief moment to ingest buffered container logs from Fargate
-    print("Waiting 60 seconds for CloudWatch log flush...")
-    time.sleep(60)
-    
-    # 1. Query CloudWatch Logs for recent container output
     logs_client = boto3.client('logs')
     log_group_name = "/ecs/fargate-test-app"
     
-    log_snippet = "No logs available yet."
-    try:
-        response = logs_client.filter_log_events(
-            logGroupName=log_group_name,
-            limit=10,
-            interleaved=True
-        )
-        events = response.get('events', [])
-        log_snippet = "\n".join([e['message'] for e in events]) if events else "Log group is empty."
-    except Exception as e:
-        log_snippet = f"Could not fetch logs: {str(e)}"
+    log_snippet = "No log streams found."
+    
+    # Poll for the active log stream (retry up to 3 times, waiting 2 seconds each)
+    stream_name = None
+    for attempt in range(3):
+        try:
+            streams_response = logs_client.describe_log_streams(
+                logGroupName=log_group_name,
+                orderBy='LastEventTime',
+                descending=True,
+                limit=1
+            )
+            streams = streams_response.get('logStreams', [])
+            if streams:
+                stream_name = streams[0]['logStreamName']
+                print(f"Found active log stream: {stream_name}")
+                break
+        except Exception as e:
+            print(f"Attempt {attempt + 1}: Waiting for log stream to initialize... ({str(e)})")
+        
+        time.sleep(2)
+
+    # Fetch log events if a stream was found
+    if stream_name:
+        try:
+            log_events = logs_client.get_log_events(
+                logGroupName=log_group_name,
+                logStreamName=stream_name,
+                limit=15,
+                startFromHead=False
+            )
+            events = log_events.get('events', [])
+            log_snippet = "\n".join([e['message'] for e in events]) if events else "Log stream was empty."
+        except Exception as e:
+            log_snippet = f"Could not fetch log events: {str(e)}"
 
     print(f"Extracted Log Snippet for AI: {log_snippet}")
 
-    # 2. Invoke Amazon Nova Lite for root-cause and sizing recommendation
+    # Invoke Amazon Nova Lite for root-cause and sizing recommendation
     bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
     
     prompt = f"""
