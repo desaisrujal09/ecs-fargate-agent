@@ -7,7 +7,7 @@ def lambda_handler(event, context):
     
     # 1. Query CloudWatch Logs using FilterLogEvents (handles missing streams gracefully)
     logs_client = boto3.client('logs')
-    log_group_name = "/aws/ecs/fargate-test-app"
+    log_group_name = "/ecs/fargate-test-app"
     
     log_snippet = "No logs available yet."
     try:
