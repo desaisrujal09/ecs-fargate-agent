@@ -12,7 +12,6 @@ def lambda_handler(event, context):
     log_snippet = "No log streams found."
     
     # 1. Active Log Stream Polling Mechanism
-    # Loops up to 3 times, waiting 2 seconds per iteration to bypass the Fargate-to-CloudWatch log flush lag.
     stream_name = None
     for attempt in range(3):
         try:
@@ -33,7 +32,6 @@ def lambda_handler(event, context):
         time.sleep(2)
 
     # 2. Fetch Log Events
-    # Pulls the last 15 raw events from the identified container stream for analysis.
     if stream_name:
         try:
             log_events = logs_client.get_log_events(
@@ -50,7 +48,6 @@ def lambda_handler(event, context):
     print(f"Extracted Log Snippet for AI: {log_snippet}")
 
     # 3. Amazon Nova Lite Model Invocation
-    # Feeds the runtime log snippet into Amazon Bedrock (Nova Lite) to generate structural failure diagnostics.
     bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
     
     prompt = f"""
@@ -92,19 +89,19 @@ def lambda_handler(event, context):
     except Exception as ex:
         ai_analysis = f"Bedrock invocation failed: {str(ex)}"
 
-    # 4. AWS Chatbot Custom Notification Schema Formatting
-    # Wraps the analysis into the official JSON structure required by AWS Chatbot/Amazon Q 
-    # to prevent unsupported event schema rejections in CloudWatch.
+    # 4. Amazon Q Developer / AWS Chatbot Compliant Custom Notification Schema
     sns_topic_arn = os.environ.get("SNS_TOPIC_ARN")
     if sns_topic_arn:
         try:
             sns_client = boto3.client('sns')
             
+            # Compliant schema format: source must be 'custom' and message goes into 'description'
             custom_notification = {
                 "version": "1.0",
-                "source": "custom.autosre",
+                "source": "custom",
                 "content": {
-                    "text": f"🚨 *AutoSRE Agent: Fargate Task Failure*\n\n{ai_analysis}\n\n_Tip: Type `@aws` or `@Amazon Q` in this channel to ask follow-up questions about this crash!_"
+                    "textType": "client-markdown",
+                    "description": f"🚨 *AutoSRE Agent: Fargate Task Failure*\n\n{ai_analysis}\n\n_Tip: Type `@aws` or `@Amazon Q` in this channel to ask follow-up questions about this crash!_"
                 }
             }
             
@@ -113,7 +110,7 @@ def lambda_handler(event, context):
                 Message=json.dumps(custom_notification),
                 Subject="AutoSRE Diagnostic Report"
             )
-            print("Successfully published custom notification to SNS topic.")
+            print("Successfully published valid custom notification to SNS topic.")
         except Exception as sns_ex:
             print(f"Failed to publish to SNS: {str(sns_ex)}")
     else:
@@ -121,5 +118,5 @@ def lambda_handler(event, context):
 
     return {
         'statusCode': 200,
-        'body': json.dumps('Auto-remediation analysis complete with Nova Lite and Chatbot notification.')
+        'body': json.dumps('Auto-remediation analysis complete with compliant Chatbot notification.')
     }
