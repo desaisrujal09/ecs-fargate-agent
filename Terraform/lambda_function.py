@@ -261,7 +261,7 @@ def handle_interactive_chat(slack_event):
     The engineer asks: "{user_query}"
     
     Respond like a human expert:
-    1. Talk conversationally. Explain what you see happening in the logs in plain English.
+    1. Talk conversationally. Explain what you see happening in the logs in plain English. The headline should be a short summary of the issue.
     2. Identify the root cause if there's an error.
     3. Clearly outline preventative steps or code/config changes to ensure this error doesn't happen again in the future.
     Keep it concise, clear, and avoid robotic formatting or walls of generic text.
