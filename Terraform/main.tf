@@ -176,6 +176,14 @@ resource "aws_iam_policy" "autosre_custom_policy" {
           "sns:Publish"
         ]
         Resource = "arn:aws:sns:us-east-1:162898224956:autosre-alert-bot"
+      },
+      {
+      "Effect": "Allow",
+      "Action": [
+          "dynamodb:PutItem",
+          "dynamodb:Query"
+      ],
+      "Resource": "arn:aws:dynamodb:sreagent:table/SREAgentChatHistory"
       }
     ]
   })
@@ -276,4 +284,49 @@ resource "aws_lambda_permission" "api_gateway" {
 output "slack_webhook_url" {
   description = "Copy this URL into your Slack App Event Subscriptions Request URL field"
   value       = "${aws_apigatewayv2_stage.default.invoke_url}/slack/events"
+}
+
+
+# ==========================================
+# DynamoDB Table for SRE Agent Thread Memory
+# ==========================================
+
+resource "aws_dynamodb_table" "sre_agent" {
+  name         = "SREAgentChatHistory"
+  billing_mode = "PAY_PER_REQUEST" # On-demand pricing, ideal for serverless workloads
+  hash_key     = "thread_ts"
+  range_key    = "timestamp"
+
+  attribute {
+    name = "thread_ts"
+    type = "S" # String (Slack Thread Timestamp ID)
+  }
+
+  attribute {
+    name = "timestamp"
+    type = "N" # Number (Millisecond epoch sort key)
+  }
+
+  # Enable Time-To-Live (TTL) so old conversation threads auto-delete after 24 hours
+  ttl {
+    attribute_name = "expires_at"
+    enabled        = true
+  }
+
+  tags = {
+    Environment = "Production"
+    Project     = "AutoSRE-ChatOps"
+    ManagedBy   = "Terraform"
+    Name        = "sreagent"
+  }
+}
+
+output "dynamodb_table_name" {
+  description = "The name of the DynamoDB table for chat history"
+  value       = aws_dynamodb_table.sre_agent.name
+}
+
+output "dynamodb_table_arn" {
+  description = "The ARN of the DynamoDB table"
+  value       = aws_dynamodb_table.sre_agent.arn
 }

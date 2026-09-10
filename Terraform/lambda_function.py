@@ -5,6 +5,12 @@ import base64
 import ast
 import urllib.request
 import boto3
+from boto3.dynamodb.conditions import Key
+
+# Initialize AWS clients
+dynamodb = boto3.resource('dynamodb')
+table_name = os.environ.get('DYNAMODB_TABLE_NAME', 'SREAgentChatHistory')
+table = dynamodb.Table(table_name)
 
 def parse_slack_body(body_str):
     """Safely parses incoming JSON and strictly guarantees a dictionary is returned."""
@@ -45,12 +51,42 @@ def parse_slack_body(body_str):
     raise ValueError(f"Body could not be parsed into a dictionary: {body_str}")
 
 
+def get_conversation_history(thread_ts):
+    """Fetches past messages for this specific Slack thread from DynamoDB."""
+    try:
+        response = table.query(
+            KeyConditionExpression=Key('thread_ts').eq(thread_ts),
+            ScanIndexForward=True, # Oldest to newest
+            Limit=10 # Keep last 10 messages for context window
+        )
+        return response.get('Items', [])
+    except Exception as e:
+        print(f"Error fetching history from DynamoDB: {e}")
+        return []
+
+
+def save_message_to_history(thread_ts, role, content):
+    """Saves a message turn to DynamoDB with a 24-hour TTL expiration."""
+    try:
+        ttl = int(time.time()) + 86400 # 24 hours from now
+        table.put_item(
+            Item={
+                'thread_ts': thread_ts,
+                'timestamp': int(time.time() * 1000), # Unique millisecond sort key
+                'role': role, # 'user' or 'assistant'
+                'content': content,
+                'expires_at': ttl
+            }
+        )
+    except Exception as e:
+        print(f"Error saving history to DynamoDB: {e}")
+
+
 def lambda_handler(event, context):
     print("Event received: ", json.dumps(event))
     
     # Check for Slack retry headers and drop them to prevent duplicate spamming
     headers = event.get("headers") or {}
-    # Case-insensitive header check for Slack retry
     retry_header_keys = [k for k in headers.keys() if k.lower() == "x-slack-retry-num"]
     if retry_header_keys:
         print(f"Ignored Slack retry event (Header found: {retry_header_keys[0]})")
@@ -166,12 +202,25 @@ def handle_ecs_failure(event, context):
 
 
 def handle_interactive_chat(slack_event):
-    """Fetches fresh logs on-demand, queries Bedrock like a human SRE engineer, and replies to Slack."""
+    """Fetches fresh logs on-demand, leverages thread memory, queries Bedrock, and replies to Slack."""
     channel_id = slack_event.get("channel")
     user_query = slack_event.get("text", "")
+    # Anchor thread: use thread_ts if exists, otherwise fallback to message ts
+    thread_ts = slack_event.get("thread_ts") or slack_event.get("ts")
     
-    print(f"Interactive query from Slack: {user_query}")
+    print(f"Interactive query from Slack (Thread: {thread_ts}): {user_query}")
     
+    # 1. Fetch short-term conversation history for this specific thread
+    history = get_conversation_history(thread_ts)
+    history_formatted = ""
+    if history:
+        history_formatted = "Conversation History in this thread:\n"
+        for h in history:
+            role_label = "User" if h['role'] == 'user' else "Assistant"
+            history_formatted += f"- {role_label}: {h['content']}\n"
+        history_formatted += "\n"
+
+    # 2. Fetch live container logs
     logs_client = boto3.client('logs')
     log_group_name = "/ecs/fargate-test-app"
     log_snippet = "No recent logs found."
@@ -190,10 +239,12 @@ def handle_interactive_chat(slack_event):
     except Exception as e:
         print(f"Could not fetch logs for chat context: {str(e)}")
 
+    # 3. Construct prompt with thread memory and strict guardrails
     bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
     prompt = f"""
     You are a helpful, senior SRE engineer talking directly to a teammate in Slack. 
-    Here are the recent container logs from the app:
+    
+    {history_formatted}Recent container logs from the app:
     {log_snippet}
     
     The engineer asks: "{user_query}"
@@ -218,12 +269,18 @@ def handle_interactive_chat(slack_event):
     except Exception as ex:
         reply_text = f"Ah, ran into a snag getting the AI analysis: {str(ex)}"
 
+    # 4. Save the user query and assistant reply to DynamoDB thread history
+    save_message_to_history(thread_ts, 'user', user_query)
+    save_message_to_history(thread_ts, 'assistant', reply_text)
+
+    # 5. Post response back to Slack within the thread
     slack_token = os.environ.get("SLACK_BOT_TOKEN")
     if slack_token:
         slack_url = "https://slack.com/api/chat.postMessage"
         payload = {
             "channel": channel_id,
-            "text": reply_text
+            "text": reply_text,
+            "thread_ts": thread_ts  # Anchors response inside the Slack thread
         }
         req = urllib.request.Request(
             slack_url,
