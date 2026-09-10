@@ -12,6 +12,11 @@ dynamodb = boto3.resource('dynamodb')
 table_name = os.environ.get('DYNAMODB_TABLE_NAME', 'sreagent')
 table = dynamodb.Table(table_name)
 
+SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN")
+SLACK_CHANNEL_ID = os.environ.get("SLACK_CHANNEL_ID", "C0C1B73JTA4")  # Fallback target channel ID
+LOG_GROUP_NAME = "/ecs/fargate-test-app"
+
+
 def parse_slack_body(body_str):
     """Safely parses incoming JSON and strictly guarantees a dictionary is returned."""
     if not body_str:
@@ -94,7 +99,7 @@ def lambda_handler(event, context):
 
     body_str = event.get("body")
     if not body_str:
-        # Triggers when event comes from EventBridge / ECS state change directly without API Gateway body wrapper
+        # Triggers when event comes from EventBridge / ECS state change directly
         return handle_ecs_failure(event, context)
     
     if "requestContext" in event:
@@ -126,10 +131,9 @@ def lambda_handler(event, context):
 
 
 def handle_ecs_failure(event, context):
-    """Automated crash reporting pipeline with active log streaming and Nova Lite analysis."""
+    """Automated crash reporting pipeline with active log streaming, Nova Lite analysis, and direct Slack notification."""
     print("Handling automated ECS failure event...")
     logs_client = boto3.client('logs')
-    log_group_name = "/ecs/fargate-test-app"
     
     log_snippet = "No log streams found."
     stream_name = None
@@ -137,7 +141,7 @@ def handle_ecs_failure(event, context):
     for attempt in range(3):
         try:
             streams_response = logs_client.describe_log_streams(
-                logGroupName=log_group_name,
+                logGroupName=LOG_GROUP_NAME,
                 orderBy='LastEventTime',
                 descending=True,
                 limit=1
@@ -153,7 +157,7 @@ def handle_ecs_failure(event, context):
     if stream_name:
         try:
             log_events = logs_client.get_log_events(
-                logGroupName=log_group_name,
+                logGroupName=LOG_GROUP_NAME,
                 logStreamName=stream_name,
                 limit=15,
                 startFromHead=False
@@ -184,25 +188,28 @@ def handle_ecs_failure(event, context):
     except Exception as ex:
         ai_analysis = f"Bedrock error: {str(ex)}"
 
-    sns_topic_arn = os.environ.get("SNS_TOPIC_ARN")
-    print(f"Publishing crash analysis to SNS Topic ARN: {sns_topic_arn}")
-    if sns_topic_arn:
-        try:
-            sns_client = boto3.client('sns')
-            custom_notification = {
-                "version": "1.0",
-                "source": "custom",
-                "content": {
-                    "textType": "client-markdown",
-                    "description": f"🚨 *AutoSRE Agent: Fargate Task Failure*\n\n{ai_analysis}"
-                }
+    # Post failure analysis directly to Slack channel
+    if SLACK_BOT_TOKEN:
+        slack_url = "https://slack.com/api/chat.postMessage"
+        payload = {
+            "channel": SLACK_CHANNEL_ID,
+            "text": f"🚨 *AutoSRE Agent: Fargate Task Failure Detected*\n\n{ai_analysis}"
+        }
+        req = urllib.request.Request(
+            slack_url,
+            data=json.dumps(payload).encode('utf-8'),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {SLACK_BOT_TOKEN}"
             }
-            sns_client.publish(TopicArn=sns_topic_arn, Message=json.dumps(custom_notification))
-            print("Successfully published failure analysis to SNS.")
-        except Exception as sns_ex:
-            print(f"SNS publish failed: {str(sns_ex)}")
+        )
+        try:
+            urllib.request.urlopen(req)
+            print("Successfully posted failure alert directly to Slack.")
+        except Exception as api_ex:
+            print(f"Failed to post crash alert to Slack API: {str(api_ex)}")
     else:
-        print("WARNING: SNS_TOPIC_ARN environment variable is not set.")
+        print("WARNING: SLACK_BOT_TOKEN environment variable is not set.")
 
     return {'statusCode': 200, 'body': json.dumps('ECS failure processed.')}
 
@@ -227,17 +234,16 @@ def handle_interactive_chat(slack_event):
 
     # 2. Fetch live container logs
     logs_client = boto3.client('logs')
-    log_group_name = "/ecs/fargate-test-app"
     log_snippet = "No recent logs found."
     try:
         streams_response = logs_client.describe_log_streams(
-            logGroupName=log_group_name, orderBy='LastEventTime', descending=True, limit=1
+            logGroupName=LOG_GROUP_NAME, orderBy='LastEventTime', descending=True, limit=1
         )
         streams = streams_response.get('logStreams', [])
         if streams:
             stream_name = streams[0]['logStreamName']
             log_events = logs_client.get_log_events(
-                logGroupName=log_group_name, logStreamName=stream_name, limit=15, startFromHead=False
+                logGroupName=LOG_GROUP_NAME, logStreamName=stream_name, limit=15, startFromHead=False
             )
             events = log_events.get('events', [])
             log_snippet = "\n".join([e['message'] for e in events])
@@ -284,8 +290,7 @@ def handle_interactive_chat(slack_event):
     save_message_to_history(thread_ts, 'assistant', reply_text)
 
     # 5. Post response back to Slack within the thread
-    slack_token = os.environ.get("SLACK_BOT_TOKEN")
-    if slack_token:
+    if SLACK_BOT_TOKEN:
         slack_url = "https://slack.com/api/chat.postMessage"
         payload = {
             "channel": channel_id,
@@ -297,7 +302,7 @@ def handle_interactive_chat(slack_event):
             data=json.dumps(payload).encode('utf-8'),
             headers={
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {slack_token}"
+                "Authorization": f"Bearer {SLACK_BOT_TOKEN}"
             }
         )
         try:
