@@ -261,10 +261,11 @@ def handle_interactive_chat(slack_event):
     The engineer asks: "{user_query}"
     
     Respond like a human expert:
-    1. Talk conversationally. Explain what you see happening in the logs in plain English. The headline should be a short summary of the issue. Use bullet points if needed. You MUST start your response with exactly this phrasing: "ECS App is down. Here is what I see on the CloudWatch logs"
-    2. Identify the root cause if there's an error.
-    3. **Filter Noise:** Ignore trivial requests (like static file 404s, favicon requests, or health checks) unless they caused the crash.
-    4. Clearly outline preventative steps or code/config changes to ensure this error doesn't happen again in the future.
+    1. You MUST start your response with exactly this phrasing: "ECS App is down. Here is what I see on the CloudWatch logs"
+    2. Talk conversationally. Explain what you see happening in the logs in plain English. The headline should be a short summary of the issue. Use bullet points if needed. 
+    3. Identify the root cause if there's an error.
+    4. **Filter Noise:** Ignore trivial requests (like static file 404s, favicon requests, or health checks) unless they caused the crash.
+    5. Clearly outline preventative steps or code/config changes to ensure this error doesn't happen again in the future.
     Keep it concise, clear, and avoid robotic formatting or walls of generic text.
     Follow these response rules strictly:
     1. **If the user is just saying hello, hi, or making casual small talk:** Respond conversationally and briefly ask how you can help today. Do NOT dump log analysis or troubleshooting steps.
