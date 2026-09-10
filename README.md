@@ -7,13 +7,13 @@
 ![Slack](https://img.shields.io/badge/ChatOps-Slack-4A154B?logo=slack&logoColor=white)
 ![Python](https://img.shields.io/badge/App-Python%203.11-3776AB?logo=python&logoColor=white)
 
-A portfolio project that demonstrates how to deploy a containerized Python application on **Amazon ECS Fargate** with Terraform-managed infrastructure, GitHub Actions-based CI/CD, remote Terraform state in S3, and a Slack-integrated operational chatbot for failure analysis and response.
+A portfolio project that demonstrates how to deploy a containerized Python application on **Amazon ECS Fargate** with Terraform-managed infrastructure, GitHub Actions-based CI/CD, remote Terraform state management, and ChatOps automation via Slack.
 
 ## What this project does
 
-This project provisions AWS infrastructure and deploys a lightweight Flask application to ECS on Fargate. It also includes a Lambda-based automation layer that can process Slack events, inspect ECS-related logs, and generate operational responses for chatbot-style incident workflows.
+This project provisions AWS infrastructure and deploys a lightweight Flask application to ECS on Fargate. It also includes a Lambda-based automation layer that can process Slack events and respond with ECS status information and incident analysis.
 
-From a portfolio perspective, this repo showcases practical cloud engineering skills across infrastructure as code, container delivery, AWS-native operations, CI/CD automation, and ChatOps-style integrations.
+From a portfolio perspective, this repo showcases practical cloud engineering skills across infrastructure as code, container delivery, AWS-native operations, CI/CD automation, and ChatOps-style integration.
 
 ## Highlights
 
@@ -26,7 +26,7 @@ From a portfolio perspective, this repo showcases practical cloud engineering sk
 - Uses **AWS Lambda** to handle Slack interactions and ECS failure-processing logic.
 - Pulls recent **CloudWatch Logs** data for troubleshooting context.
 - Uses **Amazon Bedrock Nova Lite** for concise AI-assisted incident analysis.
-- Publishes notifications through **Amazon SNS**.
+- Publishes responses directly to **Slack** via API calls.
 
 ## Architecture
 
@@ -51,7 +51,7 @@ AWS Infrastructure      ECS Service Update
                        |      +----------> /crash (simulate container crash)
                        +-----------------> /      (basic app response)
 
-Slack User ---> Slack Events ---> API/Lambda ---> Log fetch / analysis ---> Slack or SNS response
+Slack User ---> Slack Events ---> API/Lambda ---> Log fetch / analysis ---> Slack API response
                                      |
                                      +--> CloudWatch Logs
                                      +--> Amazon Bedrock
@@ -68,7 +68,6 @@ Slack User ---> Slack Events ---> API/Lambda ---> Log fetch / analysis ---> Slac
 | CI/CD | GitHub Actions |
 | State management | Amazon S3 backend for Terraform state |
 | Observability | Amazon CloudWatch Logs |
-| Notifications | Amazon SNS |
 | ChatOps | Slack |
 | App runtime | Python 3.11, Flask |
 | AI integration | Amazon Bedrock Nova Lite |
@@ -145,8 +144,8 @@ The Lambda function acts as the operational control point for the project.
 
 It supports two main scenarios:
 
-1. **Slack chatbot interaction** — accepts Slack events, filters retries or bot-originated messages, and returns short operational responses.
-2. **ECS failure analysis** — fetches recent CloudWatch log events, sends log context to Amazon Bedrock, and publishes a concise incident-style summary through SNS.
+1. **Slack chatbot interaction** — accepts Slack events, filters retries or bot-originated messages, and returns short operational responses via Slack API.
+2. **ECS failure analysis** — fetches recent CloudWatch log events, sends log context to Amazon Bedrock for analysis, and publishes a concise incident-style summary back to the Slack channel via API.
 
 This makes the project more than a basic ECS deployment; it demonstrates a lightweight **ChatOps + AutoSRE** pattern using AWS-native services.
 
@@ -176,4 +175,4 @@ The GitHub Actions workflows expect repository secrets such as:
 - `AWS_SECRET_ACCESS_KEY`
 - `SLACK_BOT_TOKEN`
 
-Depending on your Terraform implementation, you may also choose to add environment-specific variables for SNS topics, Slack signing configuration, or Bedrock-related settings.
+Depending on your Terraform implementation, you may also choose to add environment-specific variables for Slack channel configuration, Slack signing configuration, or Bedrock-related settings.
