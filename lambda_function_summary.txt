@@ -1,0 +1,22 @@
+This Lambda function acts as an **automated SRE assistant** for an ECS/Fargate application. It supports two workflows: processing ECS failure alerts and answering Slack questions about the application.
+
+- It first checks whether the incoming request is a Slack retry. If so, it returns \(200\) immediately to prevent duplicate Slack replies.
+- For Slack/API Gateway requests, it safely parses the request body, including base64-encoded bodies and Slack’s URL-verification `challenge`.
+- It ignores messages created by bots to avoid replying to itself in a loop.
+- When a user mentions the Slack bot or sends it a message, it:
+  - Fetches recent logs from the CloudWatch log group `/ecs/fargate-test-app`
+  - Sends the user’s question plus those logs to Amazon Bedrock Nova Lite
+  - Posts the AI-generated SRE response back to the originating Slack channel
+
+For ECS failure events, it:
+
+- Polls CloudWatch Logs for the newest log stream and retrieves recent container logs.
+- Sends the logs to Amazon Bedrock Nova Lite for a short root-cause analysis and prevention recommendation.
+- Publishes that analysis to an SNS topic, using `SNS_TOPIC_ARN` from Lambda environment variables.
+
+It relies on these environment variables:
+
+- `SNS_TOPIC_ARN` for publishing Fargate failure notifications
+- `SLACK_BOT_TOKEN` for sending replies through Slack’s `chat.postMessage` API
+
+In short, it is a lightweight **AI-powered incident-response bot**: ECS failures trigger automatic log analysis and alerting, while Slack users can ask the bot questions about current ECS application logs.
