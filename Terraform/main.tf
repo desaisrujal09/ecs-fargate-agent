@@ -293,7 +293,7 @@ output "slack_webhook_url" {
 # ==========================================
 
 resource "aws_dynamodb_table" "sre_agent" {
-  name         = "SREAgentChatHistory"
+  name         = "sreagent"
   billing_mode = "PAY_PER_REQUEST" # On-demand pricing, ideal for serverless workloads
   hash_key     = "thread_ts"
   range_key    = "timestamp"
@@ -318,7 +318,6 @@ resource "aws_dynamodb_table" "sre_agent" {
     Environment = "Production"
     Project     = "AutoSRE-ChatOps"
     ManagedBy   = "Terraform"
-    Name        = "sreagent"
   }
 }
 
