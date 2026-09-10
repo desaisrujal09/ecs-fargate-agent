@@ -217,7 +217,7 @@ def handle_ecs_failure(event, context):
 def handle_interactive_chat(slack_event):
     """Fetches fresh logs on-demand, leverages thread memory, queries Bedrock, and replies to Slack."""
     channel_id = slack_event.get("channel")
-    user_query = slack_event.get("text", "")
+    user_query = slack_event.get("text", "").strip()
     thread_ts = slack_event.get("thread_ts") or slack_event.get("ts")
     
     print(f"Interactive query from Slack (Thread: {thread_ts}): {user_query}")
@@ -250,7 +250,7 @@ def handle_interactive_chat(slack_event):
     except Exception as e:
         print(f"Could not fetch logs for chat context: {str(e)}")
 
-    # 3. Construct prompt with thread memory and strict guardrails
+    # 3. Construct clean, non-contradictory prompt for chat
     bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
     prompt = f"""
     You are a helpful, senior SRE engineer talking directly to a teammate in Slack. 
@@ -260,18 +260,13 @@ def handle_interactive_chat(slack_event):
     
     The engineer asks: "{user_query}"
     
-    Respond like a human expert:
-    1. You MUST start your response with exactly this phrasing: "ECS App is down. Here is what I see on the CloudWatch logs"
-    2. Identify the root cause if there's an error.
-    3. **Filter Noise:** Ignore trivial requests (like static file 404s, favicon requests, or health checks) unless they caused the crash.
-    4. Clearly outline preventative steps or code/config changes to ensure this error doesn't happen again in the future.
-    Keep it concise, clear, and avoid robotic formatting or walls of generic text.
-    Follow these response rules strictly:
-    1. **If the user is just saying hello, hi, or making casual small talk:** Respond conversationally and briefly ask how you can help today. Do NOT dump log analysis or troubleshooting steps.
-    2. **If the user is asking a technical question or about an error/crash:** Explain what you see in the logs, identify the root cause, and provide clear preventative steps.
-    3. **If the user asks about anything outside the monitored ECS app (e.g., general knowledge, weather, other projects, unrelated code):** You must refuse to answer details and reply *only* with this exact phrase: "Sorry I am not trained to answer this question. Ask me anything about the ECS app."
-    4. **If the user asks for a summary of the conversation history:** Provide a concise summary of the thread so far, without repeating the entire log or previous messages.
-    Keep your response short, natural, and friendly.
+    Follow these response rules strictly based on the user's intent:
+    1. **Small Talk (e.g., "hi", "hello", "thanks"):** Respond conversationally and briefly as a teammate. Do NOT analyze logs or mention crashes.
+    2. **Technical Questions / Errors:** Explain what you see in the logs, identify the root cause, and provide clear, concise preventative steps. Filter out background noise like favicon 404s unless relevant.
+    3. **Out-of-Scope Questions:** If the user asks about anything outside the monitored ECS app (e.g., weather, general coding, sports), you must reply *only* with this exact phrase and nothing else: "Sorry I am not trained to answer this question. Ask me anything about the ECS app."
+    4. **Conversation Summary:** If requested, summarize the thread history concisely.
+    
+    Keep your response short, natural, and friendly. Avoid robotic walls of text.
     """
     
     body = {
