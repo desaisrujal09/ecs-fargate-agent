@@ -94,6 +94,7 @@ def lambda_handler(event, context):
 
     body_str = event.get("body")
     if not body_str:
+        # Triggers when event comes from EventBridge / ECS state change directly without API Gateway body wrapper
         return handle_ecs_failure(event, context)
     
     if "requestContext" in event:
@@ -126,6 +127,7 @@ def lambda_handler(event, context):
 
 def handle_ecs_failure(event, context):
     """Automated crash reporting pipeline with active log streaming and Nova Lite analysis."""
+    print("Handling automated ECS failure event...")
     logs_client = boto3.client('logs')
     log_group_name = "/ecs/fargate-test-app"
     
@@ -183,6 +185,7 @@ def handle_ecs_failure(event, context):
         ai_analysis = f"Bedrock error: {str(ex)}"
 
     sns_topic_arn = os.environ.get("SNS_TOPIC_ARN")
+    print(f"Publishing crash analysis to SNS Topic ARN: {sns_topic_arn}")
     if sns_topic_arn:
         try:
             sns_client = boto3.client('sns')
@@ -195,8 +198,11 @@ def handle_ecs_failure(event, context):
                 }
             }
             sns_client.publish(TopicArn=sns_topic_arn, Message=json.dumps(custom_notification))
+            print("Successfully published failure analysis to SNS.")
         except Exception as sns_ex:
             print(f"SNS publish failed: {str(sns_ex)}")
+    else:
+        print("WARNING: SNS_TOPIC_ARN environment variable is not set.")
 
     return {'statusCode': 200, 'body': json.dumps('ECS failure processed.')}
 
@@ -205,7 +211,6 @@ def handle_interactive_chat(slack_event):
     """Fetches fresh logs on-demand, leverages thread memory, queries Bedrock, and replies to Slack."""
     channel_id = slack_event.get("channel")
     user_query = slack_event.get("text", "")
-    # Anchor thread: use thread_ts if exists, otherwise fallback to message ts
     thread_ts = slack_event.get("thread_ts") or slack_event.get("ts")
     
     print(f"Interactive query from Slack (Thread: {thread_ts}): {user_query}")
@@ -249,6 +254,11 @@ def handle_interactive_chat(slack_event):
     
     The engineer asks: "{user_query}"
     
+    Respond like a human expert:
+    1. Talk conversationally. Explain what you see happening in the logs in plain English.
+    2. Identify the root cause if there's an error.
+    3. Clearly outline preventative steps or code/config changes to ensure this error doesn't happen again in the future.
+    Keep it concise, clear, and avoid robotic formatting or walls of generic text.
     Follow these response rules strictly:
     1. **If the user is just saying hello, hi, or making casual small talk:** Respond conversationally and briefly ask how you can help today. Do NOT dump log analysis or troubleshooting steps.
     2. **If the user is asking a technical question or about an error/crash:** Explain what you see in the logs, identify the root cause, and provide clear preventative steps.
