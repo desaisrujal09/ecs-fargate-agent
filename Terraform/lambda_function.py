@@ -9,7 +9,7 @@ from boto3.dynamodb.conditions import Key
 
 # Initialize AWS clients
 dynamodb = boto3.resource('dynamodb')
-table_name = os.environ.get('DYNAMODB_TABLE_NAME', 'SREAgentChatHistory')
+table_name = os.environ.get('DYNAMODB_TABLE_NAME', 'sreagent')
 table = dynamodb.Table(table_name)
 
 def parse_slack_body(body_str):

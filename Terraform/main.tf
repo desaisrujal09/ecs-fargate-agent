@@ -178,12 +178,12 @@ resource "aws_iam_policy" "autosre_custom_policy" {
         Resource = "arn:aws:sns:us-east-1:162898224956:autosre-alert-bot"
       },
       {
-      "Effect": "Allow",
-      "Action": [
+        Effect = "Allow"
+        Action = [
           "dynamodb:PutItem",
           "dynamodb:Query"
-      ],
-      "Resource": "arn:aws:dynamodb:sreagent:table/SREAgentChatHistory"
+        ]
+        Resource = "arn:aws:dynamodb:us-east-1:162898224956:table/sreagent"
       }
     ]
   })
@@ -214,6 +214,7 @@ resource "aws_lambda_function" "autosre_agent" {
       ENVIRONMENT = "production"
       SNS_TOPIC_ARN = "arn:aws:sns:us-east-1:162898224956:autosre-alert-bot"
       SLACK_BOT_TOKEN = var.slack_bot_token
+      DYNAMODB_TABLE_NAME = "sreagent"
     }
   }
 }
